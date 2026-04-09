@@ -97,7 +97,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			return outS;
 		}
 		if ( IsQuery( arguments.value ) ) {
-			return _queryToArrayOfStructs( arguments.value );
+			return arguments.value;
 		}
 		if ( IsDate( arguments.value ) ) {
 			return DateTimeFormat( arguments.value, "yyyy-mm-dd'T'HH:nn:ssXXX" );
@@ -120,8 +120,46 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return JavaCast( "null", "" );
 	}
 
+	private array function _queryColumnKeys( required query q ) {
+		var raw = listToArray( arguments.q.columnList );
+		for ( var ri = 1; ri <= arrayLen( raw ); ri++ ) {
+			raw[ ri ] = trim( raw[ ri ] );
+		}
+		return raw;
+	}
+
+	private boolean function _valueIsTabularCell( required any v ) {
+		if ( IsNull( arguments.v ) ) {
+			return true;
+		}
+		if ( IsNumeric( arguments.v ) || IsBoolean( arguments.v ) ) {
+			return true;
+		}
+		if ( IsDate( arguments.v ) ) {
+			return true;
+		}
+		if ( IsSimpleValue( arguments.v ) ) {
+			return true;
+		}
+		return false;
+	}
+
+	private boolean function _queryIsTabularEncodable( required query q, required array cols ) {
+		if ( !arguments.q.recordCount ) {
+			return true;
+		}
+		for ( var tr = 1; tr <= arguments.q.recordCount; tr++ ) {
+			for ( var tc = 1; tc <= arrayLen( arguments.cols ); tc++ ) {
+				if ( !_valueIsTabularCell( arguments.q[ arguments.cols[ tc ] ][ tr ] ) ) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	private array function _queryToArrayOfStructs( required query q ) {
-		var cols = listToArray( arguments.q.columnList );
+		var cols = _queryColumnKeys( arguments.q );
 		var rows = [];
 		var r = arguments.q.recordCount;
 		for ( var i = 1; i <= r; i++ ) {
@@ -133,6 +171,53 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			arrayAppend( rows, row );
 		}
 		return rows;
+	}
+
+	private array function _encodeQueryTabularLines( required query q, required numeric depth, required struct options, any encKey = javacast( "null", "" ) ) {
+		var delim = arguments.options.delimChar;
+		var cols = _queryColumnKeys( arguments.q );
+		if ( !_queryIsTabularEncodable( arguments.q, cols ) ) {
+			var asArr = _queryToArrayOfStructs( arguments.q );
+			return _encodeArrayLinesList( asArr, arguments.depth, arguments.options, arguments.encKey );
+		}
+		var lines = [];
+		var hdrT = { delimiterChar: delim, fields: cols };
+		if ( !IsNull( arguments.encKey ) ) {
+			hdrT.key = arguments.encKey;
+		}
+		arrayAppend( lines, _indentedLine( arguments.depth, _formatHeader( arguments.q.recordCount, hdrT ), arguments.options.indent ) );
+		for ( var tr = 1; tr <= arguments.q.recordCount; tr++ ) {
+			var cells = [];
+			for ( var tf = 1; tf <= arrayLen( cols ); tf++ ) {
+				arrayAppend( cells, arguments.q[ cols[ tf ] ][ tr ] );
+			}
+			arrayAppend( lines, _indentedLine( arguments.depth + 1, _encodeAndJoinPrimitives( cells, delim ), arguments.options.indent ) );
+		}
+		return lines;
+	}
+
+	private array function _encodeQueryAsListItemLines( required query q, required numeric depth, required struct options ) {
+		var delim = arguments.options.delimChar;
+		var cols = _queryColumnKeys( arguments.q );
+		var lines = [];
+		if ( !_queryIsTabularEncodable( arguments.q, cols ) ) {
+			var asArrF = _queryToArrayOfStructs( arguments.q );
+			arrayAppend( lines, _indentedListItem( arguments.depth, _formatHeader( arrayLen( asArrF ), { delimiterChar: delim } ), arguments.options.indent ) );
+			for ( var li = 1; li <= arrayLen( asArrF ); li++ ) {
+				arrayAppend( lines, _encodeListItemValueLines( asArrF[ li ], arguments.depth + 1, arguments.options ), true );
+			}
+			return lines;
+		}
+		var hdrT = { delimiterChar: delim, fields: cols };
+		arrayAppend( lines, _indentedListItem( arguments.depth, _formatHeader( arguments.q.recordCount, hdrT ), arguments.options.indent ) );
+		for ( var tr = 1; tr <= arguments.q.recordCount; tr++ ) {
+			var cells = [];
+			for ( var tf = 1; tf <= arrayLen( cols ); tf++ ) {
+				arrayAppend( cells, arguments.q[ cols[ tf ] ][ tr ] );
+			}
+			arrayAppend( lines, _indentedLine( arguments.depth + 2, _encodeAndJoinPrimitives( cells, delim ), arguments.options.indent ) );
+		}
+		return lines;
 	}
 
 	private string function _canonicalNumber( required numeric n ) {
@@ -247,6 +332,9 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		}
 		if ( IsBoolean( arguments.value ) ) {
 			return arguments.value ? "true" : "false";
+		}
+		if ( IsDate( arguments.value ) ) {
+			return _encodeStringLiteral( DateTimeFormat( arguments.value, "yyyy-mm-dd'T'HH:nn:ssXXX" ), arguments.delimiter );
 		}
 		return _encodeStringLiteral( toString( arguments.value ), arguments.delimiter );
 	}
@@ -380,7 +468,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 				if ( !structKeyExists( row, hk ) ) {
 					return false;
 				}
-				if ( !_isJsonPrimitive( row[ hk ] ) ) {
+				if ( !_valueIsTabularCell( row[ hk ] ) ) {
 					return false;
 				}
 			}
@@ -412,6 +500,10 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			}
 			return lines;
 		}
+		if ( IsQuery( arguments.value ) ) {
+			arrayAppend( lines, _encodeQueryTabularLines( arguments.value, arguments.depth, arguments.options, javacast( "null", "" ) ), true );
+			return lines;
+		}
 		if ( _isJsonArray( arguments.value ) ) {
 			arrayAppend( lines, _encodeArrayLinesList( arguments.value, arguments.depth, arguments.options, javacast( "null", "" ) ), true );
 			return lines;
@@ -438,6 +530,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			var ek = _encodeKey( k );
 			if ( _isJsonPrimitive( val ) ) {
 				arrayAppend( lines, _indentedLine( arguments.depth, ek & variables.COLON & variables.SPACE & _encodePrimitive( val, arguments.options.delimChar ), arguments.options.indent ) );
+			} else if ( IsQuery( val ) ) {
+				arrayAppend( lines, _encodeQueryTabularLines( val, arguments.depth, arguments.options, k ), true );
 			} else if ( _isJsonArray( val ) ) {
 				arrayAppend( lines, _encodeArrayLinesList( val, arguments.depth, arguments.options, k ), true );
 			} else if ( _isJsonObject( val ) ) {
@@ -523,6 +617,10 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			arrayAppend( lines, _indentedListItem( arguments.depth, _encodePrimitive( arguments.value, delim ), arguments.options.indent ) );
 			return lines;
 		}
+		if ( IsQuery( arguments.value ) ) {
+			arrayAppend( lines, _encodeQueryAsListItemLines( arguments.value, arguments.depth, arguments.options ), true );
+			return lines;
+		}
 		if ( _isJsonArray( arguments.value ) ) {
 			if ( _isArrayOfPrimitives( arguments.value ) ) {
 				arrayAppend( lines, _indentedListItem( arguments.depth, _encodeInlineArrayLine( arguments.value, delim, "" ), arguments.options.indent ) );
@@ -555,6 +653,36 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		for ( var rk = 2; rk <= arrayLen( keys ); rk++ ) {
 			arrayAppend( restKeys, keys[ rk ] );
 		}
+		var ek = _encodeKey( firstKey );
+		if ( IsQuery( firstVal ) ) {
+			var colsQ = _queryColumnKeys( firstVal );
+			if ( _queryIsTabularEncodable( firstVal, colsQ ) ) {
+				var hdrLineQ = { delimiterChar: delim, key: firstKey, fields: colsQ };
+				arrayAppend( lines, _indentedListItem( arguments.depth, _formatHeader( firstVal.recordCount, hdrLineQ ), arguments.options.indent ) );
+				for ( var wrq = 1; wrq <= firstVal.recordCount; wrq++ ) {
+					var wcellsQ = [];
+					for ( var wfq = 1; wfq <= arrayLen( colsQ ); wfq++ ) {
+						arrayAppend( wcellsQ, firstVal[ colsQ[ wfq ] ][ wrq ] );
+					}
+					arrayAppend( lines, _indentedLine( arguments.depth + 2, _encodeAndJoinPrimitives( wcellsQ, delim ), arguments.options.indent ) );
+				}
+			} else {
+				var asArrQ = _queryToArrayOfStructs( firstVal );
+				arrayAppend( lines, _indentedListItem( arguments.depth, ek & _formatHeader( arrayLen( asArrQ ), { delimiterChar: delim } ), arguments.options.indent ) );
+				for ( var xiq = 1; xiq <= arrayLen( asArrQ ); xiq++ ) {
+					arrayAppend( lines, _encodeListItemValueLines( asArrQ[ xiq ], arguments.depth + 2, arguments.options ), true );
+				}
+			}
+			if ( arrayLen( restKeys ) ) {
+				var restObjQ = {};
+				for ( var riq = 1; riq <= arrayLen( restKeys ); riq++ ) {
+					var rk0q = restKeys[ riq ];
+					restObjQ[ rk0q ] = arguments.obj[ rk0q ];
+				}
+				arrayAppend( lines, _encodeObjectLines( restObjQ, arguments.depth + 1, arguments.options ), true );
+			}
+			return lines;
+		}
 		if ( _isJsonArray( firstVal ) && _isArrayOfObjects( firstVal ) ) {
 			var th = _extractTabularHeader( firstVal );
 			if ( arrayLen( th ) ) {
@@ -579,7 +707,6 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 				return lines;
 			}
 		}
-		var ek = _encodeKey( firstKey );
 		if ( _isJsonPrimitive( firstVal ) ) {
 			arrayAppend( lines, _indentedListItem( arguments.depth, ek & variables.COLON & variables.SPACE & _encodePrimitive( firstVal, delim ), arguments.options.indent ) );
 		} else if ( _isJsonArray( firstVal ) ) {

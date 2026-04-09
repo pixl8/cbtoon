@@ -30,15 +30,37 @@ component extends="testbox.system.BaseSpec" {
 					expect( out ).toInclude( "y[3]:" );
 				} );
 
-				it( "should convert a query to an array of row structs before encoding", function() {
+				it( "should encode a nested query as tabular TOON using query column order", function() {
 					var q = queryNew( "id,name", "integer,varchar", [
 						[ 1, "Alice" ],
 						[ 2, "Bob" ]
 					] );
 					var out = toon.encodeFromCfml( { "users": q } );
-					expect( out ).toInclude( "users[2]{" );
+					expect( out ).toInclude( "users[2]{id,name}:" );
 					expect( out ).toInclude( "Alice" );
 					expect( out ).toInclude( "Bob" );
+				} );
+
+				it( "should encode a top-level query as tabular TOON", function() {
+					var q = queryNew( "id,name", "integer,varchar", [
+						[ 1, "Ada" ]
+					] );
+					var out = toon.encodeFromCfml( q );
+					expect( out ).toInclude( "[1]{id,name}:" );
+					expect( out ).toInclude( "Ada" );
+				} );
+
+				it( "should encode an empty query with columns as a zero-length tabular header", function() {
+					var q = queryNew( "id,name", "integer,varchar", [] );
+					var out = toon.encodeFromCfml( q );
+					expect( out ).toBe( "[0]{id,name}:" );
+				} );
+
+				it( "should encode a query nested in an array as a tabular list item", function() {
+					var q = queryNew( "n", "integer", [ [ 7 ] ] );
+					var out = toon.encodeFromCfml( [ q ] );
+					expect( out ).toInclude( "[1]{n}:" );
+					expect( out ).toInclude( "7" );
 				} );
 			} );
 
