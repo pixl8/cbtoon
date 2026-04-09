@@ -1,0 +1,5 @@
+artifacts/
+tests/results/
+tests/testbox/
+*.log
+.DS_Store

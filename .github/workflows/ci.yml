@@ -1,0 +1,133 @@
+name: Continuous Integration
+on:
+  push:
+  pull_request:
+jobs:
+  runtests:
+    name: Run tests
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[twgit] Init')"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cfengine: "lucee@5.4"
+            jdkVersion: "11"
+          - cfengine: "lucee@6.2"
+            jdkVersion: "22"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: ${{ matrix.jdkVersion }}
+
+      - name: Setup CommandBox CLI
+        uses: Ortus-Solutions/setup-commandbox@v2.0.1
+
+      - name: Install dependencies
+        run: box install --force --verbose
+
+      - name: Start ${{ matrix.cfengine }} server
+        run: |
+          box server start directory="${GITHUB_WORKSPACE}/tests" serverConfigFile="${GITHUB_WORKSPACE}/tests/server-cbtoontests.json" cfengine="${{ matrix.cfengine }}" --noSaveSettings --debug
+          curl -sS http://127.0.0.1:6557/ || true
+
+      - name: Run tests
+        run: |
+          mkdir -p tests/results
+          box testbox run --verbose outputFile=tests/results/test-results outputFormats=json,antjunit
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbtoon-test-results-${{ matrix.cfengine }}-jdk${{ matrix.jdkVersion }}
+          path: |
+            tests/results/*
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: tests/results/*.xml
+
+  publish:
+    name: Publish
+    needs: runtests
+    runs-on: ubuntu-latest
+    if: "success() && github.event_name != 'pull_request' && ( startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release-' ) )"
+    steps:
+      - name: Setup flow variables
+        run: |
+          branch=${GITHUB_REF##*/}
+          publish=false
+          if [[ "{{ env.event.name }}" != "pull_request" ]] ; then
+            if [[ $branch == release-* ]] || [[ $branch == v* ]] ; then
+              publish=true
+            fi
+          fi
+          echo "PUBLISH=$publish" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release version number
+        id: versiongen
+        uses: pixl8/github-action-twgit-release-version-generator@v2
+
+      - name: Inject version into box json
+        uses: dominicwatson/github-action-envsubst@v1
+        with:
+          files: box.json
+          patterns: $VERSION_NUMBER
+        env:
+          VERSION_NUMBER: ${{ steps.versiongen.outputs.semver_release_string }}
+
+      - name: Zip project
+        run: zip -rq $ZIP_FILE * --exclude=".*" --exclude="\.git/*" --exclude="\.github/*" --exclude="\docs/*" --exclude="\tests/*"
+        shell: bash
+        env:
+          ZIP_FILE: ${{ steps.versiongen.outputs.semver_release_number }}.zip
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.versiongen.outputs.semver_release_string }}
+          release_name: Release ${{ steps.versiongen.outputs.semver_release_string }}
+          draft: false
+          prerelease: ${{ steps.versiongen.outputs.semver_release_is_snapshot }}
+
+      - name: Upload Release Asset
+        id: upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.versiongen.outputs.semver_release_number }}.zip
+          asset_name: ${{ steps.versiongen.outputs.semver_release_number }}.zip
+          asset_content_type: application/zip
+
+      - name: Inject download location
+        uses: DominicWatson/github-action-envsubst@stable
+        with:
+          files: box.json
+        env:
+          DOWNLOAD_URL: ${{ steps.upload.outputs.browser_download_url }}
+
+      - name: Publish to forgebox
+        uses: pixl8/github-action-box-publish@v3
+        with:
+          forgebox_user: ${{ secrets.FORGEBOX_USER }}
+          forgebox_pass: ${{ secrets.FORGEBOX_PASS }}

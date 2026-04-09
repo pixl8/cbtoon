@@ -1,0 +1,32 @@
+{
+	"name":"Token-Oriented Object Notation (TOON) for CFML",
+	"author":"Pixl8 Group",
+	"version":"$VERSION_NUMBER",
+	"location":"$DOWNLOAD_URL",
+	"slug":"cbtoon",
+	"type":"modules",
+	"homepage":"https://github.com/pixl8/cbtoon",
+	"documentation":"https://github.com/pixl8/cbtoon",
+	"repository":{
+		"type":"git",
+		"url":"https://github.com/pixl8/cbtoon"
+	},
+	"shortDescription":"Encode and decode TOON (Token-Oriented Object Notation) for LLM-friendly compact data",
+	"contributors":[
+		"Dominic Watson <watson.dominic@gmail.com>"
+	],
+	"ignore":[
+		"**/.*",
+		"build",
+		"tests"
+	],
+	"devDependencies":{
+		"testbox":"6.4.0"
+	},
+	"installPaths":{
+		"testbox":"tests/testbox/"
+	},
+	"testbox":{
+		"runner":"http://127.0.0.1:6557/runtests.cfm"
+	}
+}
