@@ -209,7 +209,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( find( """", v ) || find( "\", v ) ) {
 			return false;
 		}
-		if ( reFind( "[[\]{}]", v ) ) {
+		if ( find( "[", v ) || find( "]", v ) || find( "{", v ) || find( "}", v ) ) {
 			return false;
 		}
 		if ( reFind( "[\n\r\t]", v ) ) {
@@ -423,9 +423,15 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return lines;
 	}
 
+	private array function _sortedStructKeys( required struct s ) {
+		var keys = structKeyArray( arguments.s );
+		arraySort( keys, "text", "asc" );
+		return keys;
+	}
+
 	private array function _encodeObjectLines( required struct value, required numeric depth, required struct options ) {
 		var lines = [];
-		var keys = structKeyArray( arguments.value );
+		var keys = _sortedStructKeys( arguments.value );
 		for ( var i = 1; i <= arrayLen( keys ); i++ ) {
 			var k = keys[ i ];
 			var val = arguments.value[ k ];

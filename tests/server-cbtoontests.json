@@ -1,14 +1,14 @@
 {
-	"app":{
-		"cfengine":"lucee@5.4"
-	},
-	"name":"cbtoontests",
-	"openbrowser":false,
-	"trayEnable":false,
-	"web":{
-		"http":{
-			"port":"6557"
-		},
-		"webroot":"/"
-	}
+    "app":{
+        "cfengine":"lucee@5.4"
+    },
+    "name":"cbtoontests",
+    "openbrowser":false,
+    "trayEnable":false,
+    "web":{
+        "http":{
+            "port":"6557"
+        },
+        "webroot":"/"
+    }
 }
