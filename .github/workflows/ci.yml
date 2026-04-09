@@ -13,8 +13,17 @@ jobs:
         include:
           - cfengine: "lucee@5.4"
             jdkVersion: "11"
+            experimental: false
           - cfengine: "lucee@6.2"
             jdkVersion: "22"
+            experimental: false
+          - cfengine: "lucee@7.0"
+            jdkVersion: "24"
+            experimental: true
+          - cfengine: "boxlang@stable"
+            jdkVersion: "24"
+            experimental: true
+    continue-on-error: ${{ matrix.experimental }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
