@@ -78,20 +78,25 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return listToArray( t, variables.NEWLINE, true );
 	}
 
-	private boolean function _mapEntryNull( required any m, required string key ) {
-		return isInstanceOf( arguments.m, "java.util.Map" )
-			&& createObject( "java", "java.util.Objects" ).isNull( arguments.m.get( JavaCast( "string", arguments.key ) ) );
+	private boolean function _looksLikeNullStructAccess( required any e ) {
+		var msg = toString( arguments.e.message ?: "" );
+		return reFindNoCase( "NULL", msg ) && reFindNoCase( "not existing", msg );
 	}
 
-	private any function _structEntryPresent( required struct s, required string key ) {
-		return isInstanceOf( arguments.s, "java.util.Map" )
-			? arguments.s.get( JavaCast( "string", arguments.key ) )
-			: arguments.s[ arguments.key ];
+	private any function _structValueMaybeNull( required struct s, required string key ) {
+		try {
+			return arguments.s[ arguments.key ];
+		} catch ( any e ) {
+			if ( _looksLikeNullStructAccess( e ) ) {
+				return NullValue();
+			}
+			rethrow;
+		}
 	}
 
 	private any function _normalizeValue( required any value ) {
 		if ( IsNull( arguments.value ) ) {
-			return JavaCast( "null", "" );
+			return NullValue();
 		}
 		if ( IsArray( arguments.value ) ) {
 			var outA = [];
@@ -106,11 +111,12 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			var keys = StructKeyArray( src );
 			for ( var ki = 1; ki <= ArrayLen( keys ); ki++ ) {
 				var kk = keys[ ki ];
-				if ( _mapEntryNull( src, kk ) ) {
-					outS[ kk ] = JavaCast( "null", "" );
-					continue;
+				var rawV = _structValueMaybeNull( src, kk );
+				if ( IsNull( rawV ) ) {
+					outS[ kk ] = NullValue();
+				} else {
+					outS[ kk ] = _normalizeValue( rawV );
 				}
-				outS[ kk ] = _normalizeValue( _structEntryPresent( src, kk ) );
 			}
 			return outS;
 		}
@@ -127,7 +133,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			try {
 				var jd = createObject( "java", "java.lang.Double" ).valueOf( JavaCast( "double", arguments.value ) );
 				if ( !jd.isFinite() ) {
-					return JavaCast( "null", "" );
+					return NullValue();
 				}
 			} catch ( any e0 ) {}
 			return arguments.value;
@@ -135,7 +141,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( IsSimpleValue( arguments.value ) ) {
 			return toString( arguments.value );
 		}
-		return JavaCast( "null", "" );
+		return NullValue();
 	}
 
 	private array function _queryColumnKeys( required query q ) {
@@ -544,12 +550,12 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		var keys = _sortedStructKeys( arguments.value );
 		for ( var i = 1; i <= arrayLen( keys ); i++ ) {
 			var k = keys[ i ];
+			var val = _structValueMaybeNull( arguments.value, k );
 			var ek = _encodeKey( k );
-			if ( _mapEntryNull( arguments.value, k ) ) {
+			if ( IsNull( val ) ) {
 				arrayAppend( lines, _indentedLine( arguments.depth, ek & variables.COLON & variables.SPACE & "null", arguments.options.indent ) );
 				continue;
 			}
-			var val = _structEntryPresent( arguments.value, k );
 			if ( _isJsonPrimitive( val ) ) {
 				arrayAppend( lines, _indentedLine( arguments.depth, ek & variables.COLON & variables.SPACE & _encodePrimitive( val, arguments.options.delimChar ), arguments.options.indent ) );
 			} else if ( IsQuery( val ) ) {
@@ -1582,7 +1588,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		var expKeys = StructKeyArray( arguments.value );
 		for ( var ei = 1; ei <= ArrayLen( expKeys ); ei++ ) {
 			var k = expKeys[ ei ];
-			if ( _mapEntryNull( arguments.value, k ) ) {
+			var keyValue = _structValueMaybeNull( arguments.value, k );
+			if ( IsNull( keyValue ) ) {
 				if ( find( ".", k ) && _isIdentifierSegment( listFirst( k, "." ) ) ) {
 					var segmentsN = listToArray( k, "." );
 					var allIdN = true;
@@ -1593,7 +1600,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 						}
 					}
 					if ( allIdN ) {
-						_insertPathSafe( expanded, segmentsN, JavaCast( "null", "" ), arguments.strict );
+						_insertPathSafe( expanded, segmentsN, NullValue(), arguments.strict );
 						continue;
 					}
 				}
@@ -1602,10 +1609,10 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 						throw( type="cbtoon.TypeError", message="Path expansion conflict at key ""#k#""" );
 					}
 				}
-				expanded[ k ] = JavaCast( "null", "" );
+				expanded[ k ] = NullValue();
 				continue;
 			}
-			var expandedChild = _expandPathsSafe( _structEntryPresent( arguments.value, k ), arguments.strict );
+			var expandedChild = _expandPathsSafe( keyValue, arguments.strict );
 			if ( find( ".", k ) && _isIdentifierSegment( listFirst( k, "." ) ) ) {
 				var segments = listToArray( k, "." );
 				var allId = true;
