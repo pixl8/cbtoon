@@ -5,6 +5,15 @@ component extends="testbox.system.BaseSpec" {
 
 		describe( "CbToon", function() {
 			describe( "encodeFromJson", function() {
+				it( "should encode struct keys whose value is JSON null without throwing", function() {
+					var json = '{"table_number":null,"x":1}';
+					var out = toon.encodeFromJson( json );
+					expect( out ).toInclude( "table_number" );
+					expect( out ).toInclude( "null" );
+					expect( out ).toInclude( "x" );
+					expect( out ).toInclude( "1" );
+				} );
+
 				it( "should encode a simple object to TOON matching the fixture", function() {
 					var expected = fileRead( expandPath( "/tests/fixtures/simple-object.toon" ) );
 					expected = replace( expected, chr( 13 ), "", "all" );
