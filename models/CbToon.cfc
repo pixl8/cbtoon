@@ -91,8 +91,11 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		}
 		if ( IsStruct( arguments.value ) ) {
 			var outS = {};
-			for ( var k in arguments.value ) {
-				outS[ k ] = _normalizeValue( arguments.value[ k ] );
+			var src = arguments.value;
+			var keys = StructKeyArray( src );
+			for ( var ki = 1; ki <= ArrayLen( keys ); ki++ ) {
+				var kk = keys[ ki ];
+				outS[ kk ] = _normalizeValue( src[ kk ] ?: NullValue() );
 			}
 			return outS;
 		}
