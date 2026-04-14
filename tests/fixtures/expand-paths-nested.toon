@@ -1,0 +1,4 @@
+outer:
+  child.flag: null
+  child.value: 1
+tags[2]: alpha,beta

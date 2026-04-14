@@ -1,0 +1,6 @@
+{
+	"rows": [
+		{ "name": "Ada", "score": null },
+		{ "name": "Bob", "score": 10 }
+	]
+}
