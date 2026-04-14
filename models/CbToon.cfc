@@ -83,6 +83,12 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return reFindNoCase( "NULL", msg ) && reFindNoCase( "not existing", msg );
 	}
 
+	private boolean function _looksLikeNullArraySlot( required any e ) {
+		var msg = toString( arguments.e.message ?: "" );
+		return reFindNoCase( "does not exist", msg )
+			&& ( reFindNoCase( "position", msg ) || reFindNoCase( "element", msg ) );
+	}
+
 	private any function _structValueMaybeNull( required struct s, required string key ) {
 		try {
 			return arguments.s[ arguments.key ];
@@ -94,14 +100,28 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		}
 	}
 
-	private any function _normalizeValue( required any value ) {
-		if ( IsNull( arguments.value ) ) {
+	private any function _arrayValueMaybeNull( required array a, required numeric idx ) {
+		try {
+			return arguments.a[ arguments.idx ];
+		} catch ( any e ) {
+			if ( _looksLikeNullStructAccess( e ) ) {
+				return NullValue();
+			}
+			if ( _looksLikeNullArraySlot( e ) && arguments.idx <= arrayLen( arguments.a ) ) {
+				return NullValue();
+			}
+			rethrow;
+		}
+	}
+
+	private any function _normalizeValue( any value ) {
+		if ( !structKeyExists( arguments, "value" ) || IsNull( arguments.value ) ) {
 			return NullValue();
 		}
 		if ( IsArray( arguments.value ) ) {
 			var outA = [];
 			for ( var i = 1; i <= arrayLen( arguments.value ); i++ ) {
-				arrayAppend( outA, _normalizeValue( arguments.value[ i ] ) );
+				arrayAppend( outA, _normalizeValue( _arrayValueMaybeNull( arguments.value, i ) ) );
 			}
 			return outA;
 		}
@@ -347,8 +367,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return """" & _escapeString( arguments.key ) & """";
 	}
 
-	private string function _encodePrimitive( required any value, required string delimiter ) {
-		if ( IsNull( arguments.value ) ) {
+	private string function _encodePrimitive( any value, required string delimiter ) {
+		if ( !structKeyExists( arguments, "value" ) || IsNull( arguments.value ) ) {
 			return "null";
 		}
 		if ( IsNumeric( arguments.value ) ) {
@@ -391,7 +411,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 	private string function _encodeAndJoinPrimitives( required array values, required string delimiter ) {
 		var parts = [];
 		for ( var i = 1; i <= arrayLen( arguments.values ); i++ ) {
-			arrayAppend( parts, _encodePrimitive( arguments.values[ i ], arguments.delimiter ) );
+			arrayAppend( parts, _encodePrimitive( _arrayValueMaybeNull( arguments.values, i ), arguments.delimiter ) );
 		}
 		return arrayToList( parts, arguments.delimiter );
 	}
@@ -416,8 +436,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return _indentedLine( arguments.depth, variables.LIST_ITEM_PREFIX & arguments.content, arguments.indentSize );
 	}
 
-	private boolean function _isJsonPrimitive( required any v ) {
-		if ( IsNull( arguments.v ) ) {
+	private boolean function _isJsonPrimitive( any v ) {
+		if ( !structKeyExists( arguments, "v" ) || IsNull( arguments.v ) ) {
 			return true;
 		}
 		if ( IsNumeric( arguments.v ) ) {
@@ -449,7 +469,11 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			return true;
 		}
 		for ( var i = 1; i <= arrayLen( arguments.a ); i++ ) {
-			if ( !_isJsonPrimitive( arguments.a[ i ] ) ) {
+			var ap = _arrayValueMaybeNull( arguments.a, i );
+			if ( IsNull( ap ) ) {
+				continue;
+			}
+			if ( !_isJsonPrimitive( ap ) ) {
 				return false;
 			}
 		}
@@ -461,7 +485,11 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			return true;
 		}
 		for ( var i = 1; i <= arrayLen( arguments.a ); i++ ) {
-			if ( !_isJsonArray( arguments.a[ i ] ) ) {
+			var aa = _arrayValueMaybeNull( arguments.a, i );
+			if ( IsNull( aa ) ) {
+				return false;
+			}
+			if ( !_isJsonArray( aa ) ) {
 				return false;
 			}
 		}
@@ -473,7 +501,11 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			return true;
 		}
 		for ( var i = 1; i <= arrayLen( arguments.a ); i++ ) {
-			if ( !_isJsonObject( arguments.a[ i ] ) ) {
+			var ao = _arrayValueMaybeNull( arguments.a, i );
+			if ( IsNull( ao ) ) {
+				return false;
+			}
+			if ( !_isJsonObject( ao ) ) {
 				return false;
 			}
 		}
@@ -489,10 +521,22 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			}
 			for ( var h = 1; h <= arrayLen( arguments.header ); h++ ) {
 				var hk = arguments.header[ h ];
-				if ( !structKeyExists( row, hk ) ) {
+				var rowKeyNames = structKeyArray( row );
+				var hasHeaderCol = false;
+				for ( var rkn = 1; rkn <= arrayLen( rowKeyNames ); rkn++ ) {
+					if ( rowKeyNames[ rkn ] == hk ) {
+						hasHeaderCol = true;
+						break;
+					}
+				}
+				if ( !hasHeaderCol ) {
 					return false;
 				}
-				if ( !_valueIsTabularCell( row[ hk ] ) ) {
+				var tabCell = _structValueMaybeNull( row, hk );
+				if ( IsNull( tabCell ) ) {
+					continue;
+				}
+				if ( !_valueIsTabularCell( tabCell ) ) {
 					return false;
 				}
 			}
@@ -620,7 +664,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 					var row = arguments.value[ tr ];
 					var cells = [];
 					for ( var tf = 1; tf <= arrayLen( tabHeader ); tf++ ) {
-						arrayAppend( cells, row[ tabHeader[ tf ] ] );
+						arrayAppend( cells, _structValueMaybeNull( row, tabHeader[ tf ] ) );
 					}
 					arrayAppend( lines, _indentedLine( arguments.depth + 1, _encodeAndJoinPrimitives( cells, delim ), arguments.options.indent ) );
 				}
@@ -676,13 +720,15 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		}
 		var keys = structKeyArray( arguments.obj );
 		var firstKey = keys[ 1 ];
-		var firstVal = arguments.obj[ firstKey ];
+		var firstVal = _structValueMaybeNull( arguments.obj, firstKey );
 		var restKeys = [];
 		for ( var rk = 2; rk <= arrayLen( keys ); rk++ ) {
 			arrayAppend( restKeys, keys[ rk ] );
 		}
 		var ek = _encodeKey( firstKey );
-		if ( IsQuery( firstVal ) ) {
+		if ( IsNull( firstVal ) ) {
+			arrayAppend( lines, _indentedListItem( arguments.depth, ek & variables.COLON & variables.SPACE & "null", arguments.options.indent ) );
+		} else if ( IsQuery( firstVal ) ) {
 			var colsQ = _queryColumnKeys( firstVal );
 			if ( _queryIsTabularEncodable( firstVal, colsQ ) ) {
 				var hdrLineQ = { delimiterChar: delim, key: firstKey, fields: colsQ };
@@ -705,13 +751,12 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 				var restObjQ = {};
 				for ( var riq = 1; riq <= arrayLen( restKeys ); riq++ ) {
 					var rk0q = restKeys[ riq ];
-					restObjQ[ rk0q ] = arguments.obj[ rk0q ];
+					restObjQ[ rk0q ] = _structValueMaybeNull( arguments.obj, rk0q );
 				}
 				arrayAppend( lines, _encodeObjectLines( restObjQ, arguments.depth + 1, arguments.options ), true );
 			}
 			return lines;
-		}
-		if ( _isJsonArray( firstVal ) && _isArrayOfObjects( firstVal ) ) {
+		} else if ( _isJsonArray( firstVal ) && _isArrayOfObjects( firstVal ) ) {
 			var th = _extractTabularHeader( firstVal );
 			if ( arrayLen( th ) ) {
 				var hdrLine = { delimiterChar: delim, key: firstKey, fields: th };
@@ -720,7 +765,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 					var wrow = firstVal[ wr ];
 					var wcells = [];
 					for ( var wf = 1; wf <= arrayLen( th ); wf++ ) {
-						arrayAppend( wcells, wrow[ th[ wf ] ] );
+						arrayAppend( wcells, _structValueMaybeNull( wrow, th[ wf ] ) );
 					}
 					arrayAppend( lines, _indentedLine( arguments.depth + 2, _encodeAndJoinPrimitives( wcells, delim ), arguments.options.indent ) );
 				}
@@ -728,14 +773,13 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 					var restObj = {};
 					for ( var ri = 1; ri <= arrayLen( restKeys ); ri++ ) {
 						var rk0 = restKeys[ ri ];
-						restObj[ rk0 ] = arguments.obj[ rk0 ];
+						restObj[ rk0 ] = _structValueMaybeNull( arguments.obj, rk0 );
 					}
 					arrayAppend( lines, _encodeObjectLines( restObj, arguments.depth + 1, arguments.options ), true );
 				}
 				return lines;
 			}
-		}
-		if ( _isJsonPrimitive( firstVal ) ) {
+		} else if ( _isJsonPrimitive( firstVal ) ) {
 			arrayAppend( lines, _indentedListItem( arguments.depth, ek & variables.COLON & variables.SPACE & _encodePrimitive( firstVal, delim ), arguments.options.indent ) );
 		} else if ( _isJsonArray( firstVal ) ) {
 			if ( !arrayLen( firstVal ) ) {
@@ -758,7 +802,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			var restObj2 = {};
 			for ( var rj = 1; rj <= arrayLen( restKeys ); rj++ ) {
 				var rk1 = restKeys[ rj ];
-				restObj2[ rk1 ] = arguments.obj[ rk1 ];
+				restObj2[ rk1 ] = _structValueMaybeNull( arguments.obj, rk1 );
 			}
 			arrayAppend( lines, _encodeObjectLines( restObj2, arguments.depth + 1, arguments.options ), true );
 		}
@@ -1028,8 +1072,16 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 				}
 			}
 		}
+		var hdrStruct = {
+			length: pb.length,
+			delimiter: pb.delimiter,
+			fields: fields
+		};
+		if ( bracketStart > 1 ) {
+			hdrStruct.key = key;
+		}
 		return {
-			  header: { key: key, length: pb.length, delimiter: pb.delimiter, fields: fields }
+			  header: hdrStruct
 			, inlineValues: len( afterColon ) ? afterColon : ""
 		};
 	}
@@ -1272,14 +1324,12 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			_assertExpectedCount( 0, arguments.header.length, "inline array items", arguments.options );
 			return;
 		}
-		var primitives = [];
 		var rawVals = _parseDelimitedValues( arguments.inlineValues, arguments.header.delimiter );
+		_assertExpectedCount( arrayLen( rawVals ), arguments.header.length, "inline array items", arguments.options );
 		for ( var ri = 1; ri <= arrayLen( rawVals ); ri++ ) {
-			arrayAppend( primitives, _parsePrimitiveToken( rawVals[ ri ] ) );
-		}
-		_assertExpectedCount( arrayLen( primitives ), arguments.header.length, "inline array items", arguments.options );
-		for ( var pi = 1; pi <= arrayLen( primitives ); pi++ ) {
-			arrayAppend( arguments.events, { type: "primitive", value: primitives[ pi ] } );
+			var primEvt = { type: "primitive" };
+			primEvt.value = _parsePrimitiveToken( rawVals[ ri ] );
+			arrayAppend( arguments.events, primEvt );
 		}
 	}
 
@@ -1465,6 +1515,40 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return state.root;
 	}
 
+	private void function _decodePutObjectValue( required struct target, required string key, any val ) {
+		if ( !structKeyExists( arguments, "val" ) || IsNull( arguments.val ) ) {
+			structInsert( arguments.target, arguments.key, NullValue(), true );
+			return;
+		}
+		arguments.target[ arguments.key ] = arguments.val;
+	}
+
+	private void function _decodeAppendArrayValue( required array target, any val ) {
+		if ( !structKeyExists( arguments, "val" ) || IsNull( arguments.val ) ) {
+			arrayAppend( arguments.target, NullValue() );
+		} else {
+			arrayAppend( arguments.target, arguments.val );
+		}
+	}
+
+	private struct function _decodeEventPrimitivePayload( required struct event ) {
+		if ( !structKeyExists( arguments.event, "value" ) ) {
+			return { isJsonNull: true };
+		}
+		try {
+			var v = arguments.event[ "value" ];
+			if ( IsNull( v ) ) {
+				return { isJsonNull: true };
+			}
+			return { isJsonNull: false, scalar: v };
+		} catch ( any e ) {
+			if ( _looksLikeNullStructAccess( e ) ) {
+				return { isJsonNull: true };
+			}
+			rethrow;
+		}
+	}
+
 	private void function _applyDecodeEvent( required struct state, required struct event ) {
 		var stack = arguments.state.stack;
 		switch ( arguments.event.type ) {
@@ -1548,18 +1632,31 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 				break;
 			}
 			case "primitive": {
+				var primPayload = _decodeEventPrimitivePayload( arguments.event );
 				if ( !arrayLen( stack ) ) {
-					arguments.state.root = arguments.event.value;
+					if ( primPayload.isJsonNull ) {
+						arguments.state.root = NullValue();
+					} else {
+						arguments.state.root = primPayload.scalar;
+					}
 				} else {
 					var parentP = stack[ arrayLen( stack ) ];
 					if ( parentP.type == "object" ) {
 						if ( isNull( parentP.currentKey ) ) {
 							throw( type="cbtoon.SyntaxError", message="Primitive event without preceding key in object" );
 						}
-						parentP.obj[ parentP.currentKey ] = arguments.event.value;
+						if ( primPayload.isJsonNull ) {
+							_decodePutObjectValue( parentP.obj, parentP.currentKey );
+						} else {
+							_decodePutObjectValue( parentP.obj, parentP.currentKey, primPayload.scalar );
+						}
 						parentP.currentKey = JavaCast( "null", "" );
 					} else if ( parentP.type == "array" ) {
-						arrayAppend( parentP.arr, arguments.event.value );
+						if ( primPayload.isJsonNull ) {
+							_decodeAppendArrayValue( parentP.arr );
+						} else {
+							_decodeAppendArrayValue( parentP.arr, primPayload.scalar );
+						}
 					}
 				}
 				break;
@@ -1573,11 +1670,14 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return reFind( "^[A-Za-z_][A-Za-z0-9_]*$", arguments.key ) == 1;
 	}
 
-	private any function _expandPathsSafe( required any value, required boolean strict ) {
+	private any function _expandPathsSafe( any value, required boolean strict ) {
+		if ( !structKeyExists( arguments, "value" ) || IsNull( arguments.value ) ) {
+			return NullValue();
+		}
 		if ( IsArray( arguments.value ) ) {
 			var outA = [];
 			for ( var i = 1; i <= arrayLen( arguments.value ); i++ ) {
-				arrayAppend( outA, _expandPathsSafe( arguments.value[ i ], arguments.strict ) );
+				arrayAppend( outA, _expandPathsSafe( _arrayValueMaybeNull( arguments.value, i ), arguments.strict ) );
 			}
 			return outA;
 		}
@@ -1637,7 +1737,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		return expanded;
 	}
 
-	private void function _insertPathSafe( required struct target, required array segments, required any value, required boolean strict ) {
+	private void function _insertPathSafe( required struct target, required array segments, any value, required boolean strict ) {
+		var hasVal = structKeyExists( arguments, "value" ) && !IsNull( arguments.value );
 		var node = arguments.target;
 		for ( var i = 1; i < arrayLen( arguments.segments ); i++ ) {
 			var seg = arguments.segments[ i ];
@@ -1657,16 +1758,24 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			if ( arguments.strict && !IsStruct( node[ leaf ] ) ) {
 				throw( type="cbtoon.TypeError", message="Expansion conflict at path ""#leaf#""" );
 			}
-			if ( IsStruct( node[ leaf ] ) && IsStruct( arguments.value ) ) {
+			if ( hasVal && IsStruct( node[ leaf ] ) && IsStruct( arguments.value ) ) {
 				structAppend( node[ leaf ], arguments.value );
 				return;
 			}
 			if ( !arguments.strict ) {
-				node[ leaf ] = arguments.value;
+				if ( hasVal ) {
+					node[ leaf ] = arguments.value;
+				} else {
+					structInsert( node, leaf, NullValue(), true );
+				}
 				return;
 			}
 			throw( type="cbtoon.TypeError", message="Expansion conflict at path ""#leaf#""" );
 		}
-		node[ leaf ] = arguments.value;
+		if ( hasVal ) {
+			node[ leaf ] = arguments.value;
+		} else {
+			structInsert( node, leaf, NullValue(), true );
+		}
 	}
 }
