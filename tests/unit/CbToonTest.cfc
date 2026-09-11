@@ -95,6 +95,38 @@ component extends="testbox.system.BaseSpec" {
 					expect( out ).toInclude( "[1]{n}:" );
 					expect( out ).toInclude( "7" );
 				} );
+
+				it( "should encode Jira-style ISO date strings on struct fields rather than dropping them", function() {
+					var data = {
+						  "created"        : "2026-07-01T10:15:04.000+0100"
+						, "resolutiondate" : "2026-07-01T17:03:38.000+0100"
+						, "status"         : "Done"
+					};
+					var out = toon.encodeFromCfml( data );
+					expect( out ).toInclude( "created:" );
+					expect( out ).toInclude( "resolutiondate:" );
+					expect( out ).toInclude( "2026-07-01" );
+					expect( out ).toInclude( "10:15:04" );
+					expect( out ).toInclude( "17:03:38" );
+					expect( out ).toInclude( "status: Done" );
+				} );
+
+				it( "should encode CFML date objects on struct fields rather than dropping them", function() {
+					var data = {
+						  "created" : CreateDateTime( 2026, 7, 1, 10, 15, 4 )
+						, "status"  : "Done"
+					};
+					var out = toon.encodeFromCfml( data );
+					expect( out ).toInclude( "created:" );
+					expect( reFind( "created:\s+\S+", out ) ).toBeGT( 0 );
+					expect( out ).toInclude( "status: Done" );
+				} );
+
+				it( "should still encode null date fields as null", function() {
+					var out = toon.encodeFromJson( '{"resolutiondate":null,"status":"Open"}' );
+					expect( out ).toInclude( "resolutiondate: null" );
+					expect( out ).toInclude( "status: Open" );
+				} );
 			} );
 
 			describe( "decodeToCfml", function() {
