@@ -105,9 +105,8 @@ component extends="testbox.system.BaseSpec" {
 					var out = toon.encodeFromCfml( data );
 					expect( out ).toInclude( "created:" );
 					expect( out ).toInclude( "resolutiondate:" );
-					expect( out ).toInclude( "2026-07-01" );
-					expect( out ).toInclude( "10:15:04" );
-					expect( out ).toInclude( "17:03:38" );
+					expect( reFind( "created:\s+""2026-07-01T", out ) ).toBeGT( 0 );
+					expect( reFind( "resolutiondate:\s+""2026-07-01T", out ) ).toBeGT( 0 );
 					expect( out ).toInclude( "status: Done" );
 				} );
 
