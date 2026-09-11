@@ -1,12 +1,8 @@
 # CHANGELOG
 
-## v1.0.6
+## v1.0.5-6
 
-* Stop asserting engine-specific wall-clock times in the date-encoding tests. Lucee emits UTC (`Z`); BoxLang keeps the original offset. The behaviour under test is that date keys are encoded, not dropped.
-
-## v1.0.5
-
-* Encode date-like simple values instead of silently dropping them. CFML `IsDate()` is true for Jira-style ISO timestamps, so they were excluded as primitives and omitted from object encoding with no fallback ([MIS-1183](https://projects.pixl8.london/browse/MIS-1183)).
+* Encode date-like simple values instead of silently dropping them. CFML `IsDate()` is true for Jira-style ISO timestamps, so they were excluded as primitives and omitted from object encoding with no fallback.
 
 ## v1.0.4
 
