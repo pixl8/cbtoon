@@ -446,7 +446,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( IsBoolean( arguments.v ) ) {
 			return true;
 		}
-		if ( IsSimpleValue( arguments.v ) && !IsDate( arguments.v ) ) {
+		if ( IsSimpleValue( arguments.v ) || IsDate( arguments.v ) ) {
 			return true;
 		}
 		return false;
