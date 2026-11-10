@@ -53,6 +53,16 @@ component extends="testbox.system.BaseSpec" {
 					expect( out ).toInclude( "values[3]:" );
 					expect( out ).toInclude( "null" );
 				} );
+
+				it( "should keep dotted package versions from JSON instead of parsing them as dates", function() {
+					var out = toon.encodeFromJson( '{"package":"presidecms","min_version":"10.30.0","max_version":"10.30.60"}' );
+
+					expect( out ).toBe(
+						  "max_version: 10.30.60" & chr( 10 )
+						& "min_version: 10.30.0" & chr( 10 )
+						& "package: presidecms"
+					);
+				} );
 			} );
 
 			describe( "encodeFromCfml", function() {
@@ -117,7 +127,7 @@ component extends="testbox.system.BaseSpec" {
 					};
 					var out = toon.encodeFromCfml( data );
 					expect( out ).toInclude( "created:" );
-					expect( reFind( "created:\s+\S+", out ) ).toBeGT( 0 );
+					expect( reFind( "created:\s+""2026-07-01T10:15:04", out ) ).toBeGT( 0 );
 					expect( out ).toInclude( "status: Done" );
 				} );
 
@@ -125,6 +135,57 @@ component extends="testbox.system.BaseSpec" {
 					var out = toon.encodeFromJson( '{"resolutiondate":null,"status":"Open"}' );
 					expect( out ).toInclude( "resolutiondate: null" );
 					expect( out ).toInclude( "status: Open" );
+				} );
+
+				it( "should keep dotted package versions on struct fields instead of parsing them as dates", function() {
+					var data = {
+						  "package"     : "presidecms"
+						, "min_version" : "10.30.0"
+						, "max_version" : "10.30.60"
+					};
+					var out = toon.encodeFromCfml( data );
+
+					expect( out ).toBe(
+						  "max_version: 10.30.60" & chr( 10 )
+						& "min_version: 10.30.0" & chr( 10 )
+						& "package: presidecms"
+					);
+				} );
+
+				it( "should keep dotted package versions in tabular rows instead of parsing them as dates", function() {
+					var rows = [ {
+						  "package"     : "presidecms"
+						, "min_version" : "10.30.0"
+						, "max_version" : "10.30.60"
+					} ];
+					var out = toon.encodeFromCfml( rows );
+
+					expect( out ).toInclude( "10.30.0" );
+					expect( out ).toInclude( "10.30.60" );
+					expect( out ).notToInclude( "2000-10-30" );
+					expect( out ).notToInclude( "1960-10-30" );
+				} );
+
+				it( "should keep dotted package versions in query cells instead of parsing them as dates", function() {
+					var q = queryNew( "package,min_version,max_version", "varchar,varchar,varchar", [
+						[ "presidecms", "10.30.0", "10.30.60" ]
+					] );
+					var out = toon.encodeFromCfml( q );
+
+					expect( out ).toInclude( "10.30.0" );
+					expect( out ).toInclude( "10.30.60" );
+					expect( out ).notToInclude( "2000-10-30" );
+					expect( out ).notToInclude( "1960-10-30" );
+				} );
+
+				it( "should keep other dotted versions that Lucee can parse as month.day.year", function() {
+					var versions = [ "6.5.0", "6.5.40", "1.29.0", "1.29.10", "1.2.17", "7.6.61" ];
+
+					for ( var version in versions ) {
+						var out = toon.encodeFromCfml( { "version": version } );
+
+						expect( out ).toBe( "version: #version#" );
+					}
 				} );
 			} );
 
@@ -327,6 +388,17 @@ component extends="testbox.system.BaseSpec" {
 					expect( arrayLen( s2 ) ).toBe( 2 );
 					expect( IsNull( s2[ 1 ].trends ) ).toBeTrue();
 					expect( s2[ 2 ].label ).toBe( "b" );
+				} );
+
+				it( "should round-trip dotted package versions as the original strings", function() {
+					var data = {
+						  "min_version" : "10.30.0"
+						, "max_version" : "10.30.60"
+					};
+					var cf = toon.decodeToCfml( toon.encodeFromCfml( data ) );
+
+					expect( toString( cf.min_version ) ).toBe( "10.30.0" );
+					expect( toString( cf.max_version ) ).toBe( "10.30.60" );
 				} );
 
 				it( "should round-trip expandPaths safe inline-null fixture", function() {
