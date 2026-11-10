@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v1.0.7
+
+* Fix over keen date formatting, converting too many strings to dates
+
 ## v1.0.5-6
 
 * Encode date-like simple values instead of silently dropping them. CFML `IsDate()` is true for Jira-style ISO timestamps, so they were excluded as primitives and omitted from object encoding with no fallback.
