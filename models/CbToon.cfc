@@ -89,6 +89,18 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 			&& ( reFindNoCase( "position", msg ) || reFindNoCase( "element", msg ) );
 	}
 
+	private boolean function _isDateObject( required any value ) {
+		return IsInstanceOf( arguments.value, "java.util.Date" )
+			|| IsInstanceOf( arguments.value, "java.time.chrono.ChronoZonedDateTime" );
+	}
+
+	private string function _formatDateObject( required any value ) {
+		if ( IsInstanceOf( arguments.value, "java.util.Date" ) ) {
+			return DateTimeFormat( arguments.value, "yyyy-mm-dd'T'HH:nn:ssXXX" );
+		}
+		return DateTimeFormat( arguments.value, "yyyy-MM-dd'T'HH:mm:ssXXX" );
+	}
+
 	private any function _structValueMaybeNull( required struct s, required string key ) {
 		try {
 			return arguments.s[ arguments.key ];
@@ -143,8 +155,8 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( IsQuery( arguments.value ) ) {
 			return arguments.value;
 		}
-		if ( IsDate( arguments.value ) ) {
-			return DateTimeFormat( arguments.value, "yyyy-mm-dd'T'HH:nn:ssXXX" );
+		if ( _isDateObject( arguments.value ) ) {
+			return _formatDateObject( arguments.value );
 		}
 		if ( IsBoolean( arguments.value ) ) {
 			return arguments.value;
@@ -179,7 +191,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( IsNumeric( arguments.v ) || IsBoolean( arguments.v ) ) {
 			return true;
 		}
-		if ( IsDate( arguments.v ) ) {
+		if ( _isDateObject( arguments.v ) ) {
 			return true;
 		}
 		if ( IsSimpleValue( arguments.v ) ) {
@@ -371,14 +383,14 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( !structKeyExists( arguments, "value" ) || IsNull( arguments.value ) ) {
 			return "null";
 		}
+		if ( _isDateObject( arguments.value ) ) {
+			return _encodeStringLiteral( _formatDateObject( arguments.value ), arguments.delimiter );
+		}
 		if ( IsNumeric( arguments.value ) ) {
 			return _canonicalNumber( arguments.value );
 		}
 		if ( IsBoolean( arguments.value ) ) {
 			return arguments.value ? "true" : "false";
-		}
-		if ( IsDate( arguments.value ) ) {
-			return _encodeStringLiteral( DateTimeFormat( arguments.value, "yyyy-mm-dd'T'HH:nn:ssXXX" ), arguments.delimiter );
 		}
 		return _encodeStringLiteral( toString( arguments.value ), arguments.delimiter );
 	}
@@ -446,7 +458,7 @@ component hint="Token-Oriented Object Notation (TOON) encode/decode — public A
 		if ( IsBoolean( arguments.v ) ) {
 			return true;
 		}
-		if ( IsSimpleValue( arguments.v ) || IsDate( arguments.v ) ) {
+		if ( IsSimpleValue( arguments.v ) || _isDateObject( arguments.v ) ) {
 			return true;
 		}
 		return false;
